@@ -1,6 +1,7 @@
 .gradle/
 build/
 run/
+release-staging/
 out/
 *.log
 *.tmp
