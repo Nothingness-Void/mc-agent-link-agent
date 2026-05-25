@@ -66,7 +66,7 @@ final class AgentMessages {
             case ALREADY_STATUS -> "[Agent] 请求 %s 已经是 %s。";
             case CANCELED -> "[Agent] 请求 %s 已取消。";
             case USAGE -> "用法: /agent <请求>";
-            case QUEUED -> "[Agent] 已接到消息，编号 %s。安装监听附属组件后会自动处理。";
+            case QUEUED -> "[Agent] 已接到消息，编号 %s。";
         };
     }
 
@@ -84,7 +84,7 @@ final class AgentMessages {
             case ALREADY_STATUS -> "[Agent] Request %s is already %s.";
             case CANCELED -> "[Agent] Request %s canceled.";
             case USAGE -> "Usage: /agent <request>";
-            case QUEUED -> "[Agent] Message received as %s. A listening addon will process it automatically when installed.";
+            case QUEUED -> "[Agent] Message received as %s.";
         };
     }
 

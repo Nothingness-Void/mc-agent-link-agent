@@ -9,6 +9,7 @@ This addon owns the in-game `/agent` command. The base mod remains a base/lib mo
 - `/agent <request>` queues an OP request for connected MCP agents or companion addons.
 - `/agent status` shows recent requests and agent activity.
 - `/agent cancel <id>` cancels a pending request.
+- Optional Claude bridge can process queued requests automatically when enabled.
 - Server-side bilingual messages:
   - Chinese for `zh_*` clients.
   - English for other clients.
@@ -18,6 +19,26 @@ This addon owns the in-game `/agent` command. The base mod remains a base/lib mo
 - Minecraft Forge `1.20.1`
 - Java `17`
 - `mc-agent-link` base mod installed on the server
+
+## Optional Claude bridge
+
+By default, Claude bridge is disabled and `/agent` behaves like `0.1.x`: requests stay in the base queue for an external MCP agent or companion addon.
+
+The addon writes `config/agent-link-agent.toml` automatically. Enable Claude bridge with:
+
+```toml
+[claude]
+enable = true
+claude_executable = ""
+session_id = ""
+timeout_seconds = 120
+working_directory = ""
+poll_interval_ms = 1500
+```
+
+When `claude_executable` is empty, the addon searches `PATH` for `claude.cmd`, `claude.exe`, `claude.bat`, then `claude`. All OPs share the same Claude `session_id`.
+
+For Claude Code itself, see `CLAUDE.md` for the shortest copy-paste setup guide.
 
 ## Build
 
