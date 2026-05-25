@@ -9,7 +9,6 @@ import net.minecraftforge.event.RegisterCommandsEvent;
 import world.agentlink.agent.AgentRequestBuffer;
 
 import java.util.List;
-import java.util.Locale;
 
 final class AgentCommand {
 
@@ -49,7 +48,7 @@ final class AgentCommand {
             send(player, AgentMessages.Key.NO_AGENT_ACTIVITY, ChatFormatting.YELLOW);
         } else {
             long ageSeconds = Math.max(0, (System.currentTimeMillis() - lastSeen) / 1000L);
-            String action = buf.lastAgentAction();
+            String action = localizeAgentAction(player, buf.lastAgentAction());
             String suffix = action == null || action.isBlank() ? "" : " (" + action + ")";
             send(player, AgentMessages.Key.LAST_AGENT_ACTIVITY, ChatFormatting.AQUA, ageSeconds, suffix);
         }
@@ -63,7 +62,7 @@ final class AgentCommand {
         for (AgentRequestBuffer.Entry e : recent) {
             String summary = e.message();
             if (summary.length() > 60) summary = summary.substring(0, 60) + "...";
-            String status = e.status().name().toLowerCase(Locale.ROOT);
+            String status = statusLabel(player, e.status());
             String statusMessage = e.statusMessage() == null || e.statusMessage().isBlank() ? "" : " - " + e.statusMessage();
             send(player, AgentMessages.Key.RECENT_ITEM, ChatFormatting.GRAY, e.id(), status, statusMessage, summary);
         }
@@ -73,7 +72,7 @@ final class AgentCommand {
     private static int reload(ServerPlayer player, AgentLinkAgentAddon addon) {
         AgentLinkAgentAddon.ReloadResult result = addon.reloadClaudeConfig();
         switch (result.status()) {
-            case "started" -> send(player, AgentMessages.Key.RELOAD_STARTED, ChatFormatting.AQUA, result.sessionId());
+            case "started" -> send(player, AgentMessages.Key.RELOAD_STARTED, ChatFormatting.AQUA);
             case "disabled" -> send(player, AgentMessages.Key.RELOAD_DISABLED, ChatFormatting.YELLOW);
             case "not_found" -> send(player, AgentMessages.Key.RELOAD_NOT_FOUND, ChatFormatting.RED);
             case "server_not_started" -> send(player, AgentMessages.Key.RELOAD_SERVER_NOT_STARTED, ChatFormatting.RED);
@@ -83,13 +82,14 @@ final class AgentCommand {
     }
 
     private static int cancel(ServerPlayer player, String id) {
-        AgentRequestBuffer.Entry entry = AgentRequestBuffer.get().cancel(id, "canceled by " + player.getGameProfile().getName());
+        AgentRequestBuffer.Entry entry = AgentRequestBuffer.get().cancel(id,
+                AgentLang.tr(player, "agentlinkagent.request.canceled_by", player.getGameProfile().getName()));
         if (entry == null) {
             send(player, AgentMessages.Key.UNKNOWN_ID, ChatFormatting.RED, id);
             return 0;
         }
         if (entry.status() != AgentRequestBuffer.Status.CANCELED) {
-            send(player, AgentMessages.Key.ALREADY_STATUS, ChatFormatting.YELLOW, id, entry.status().name().toLowerCase(Locale.ROOT));
+            send(player, AgentMessages.Key.ALREADY_STATUS, ChatFormatting.YELLOW, id, statusLabel(player, entry.status()));
             return 0;
         }
         send(player, AgentMessages.Key.CANCELED, ChatFormatting.AQUA, id);
@@ -108,5 +108,23 @@ final class AgentCommand {
 
     private static void send(ServerPlayer player, AgentMessages.Key key, ChatFormatting style, Object... args) {
         player.sendSystemMessage(Component.literal(AgentMessages.tr(player, key, args)).withStyle(style));
+    }
+
+    private static String statusLabel(ServerPlayer player, AgentRequestBuffer.Status status) {
+        return switch (status) {
+            case PENDING -> AgentLang.tr(player, "agentlinkagent.status.label.pending");
+            case WORKING -> AgentLang.tr(player, "agentlinkagent.status.label.working");
+            case DONE -> AgentLang.tr(player, "agentlinkagent.status.label.done");
+            case FAILED -> AgentLang.tr(player, "agentlinkagent.status.label.failed");
+            case CANCELED -> AgentLang.tr(player, "agentlinkagent.status.label.canceled");
+        };
+    }
+
+    private static String localizeAgentAction(ServerPlayer player, String action) {
+        if (action == null || action.isBlank()) return "";
+        if (action.startsWith("i18n:")) {
+            return AgentLang.tr(player, action.substring("i18n:".length()));
+        }
+        return action;
     }
 }
