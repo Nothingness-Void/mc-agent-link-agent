@@ -7,18 +7,23 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.HoverEvent;
 import net.minecraft.server.level.ServerPlayer;
 import world.agentlink.addon.agent.AgentAddonConfig;
+import world.agentlink.addon.agent.AgentLang;
 import world.agentlink.addon.agent.AgentLinkAgentAddon;
 import world.agentlink.agent.AgentRequestBuffer;
+
+import java.nio.file.Path;
 
 public final class ClaudeBridgeWorker implements Runnable {
     private final MinecraftServer mcServer;
     private final AgentAddonConfig.Claude cfg;
+    private final Path mcpConfigPath;
     private volatile boolean running = true;
     private long lastSeq;
 
-    public ClaudeBridgeWorker(MinecraftServer s, AgentAddonConfig.Claude c) {
+    public ClaudeBridgeWorker(MinecraftServer s, AgentAddonConfig.Claude c, Path mcpConfigPath) {
         this.mcServer = s;
         this.cfg = c;
+        this.mcpConfigPath = mcpConfigPath;
         this.lastSeq = AgentRequestBuffer.get().head();
     }
 
@@ -29,7 +34,7 @@ public final class ClaudeBridgeWorker implements Runnable {
             try {
                 var entries = buf.since(lastSeq, 10, false);
                 for (var e : entries) {
-                    lastSeq = Math.max(lastSeq, e.seq());
+                    lastSeq = e.seq();
                     if (e.status() != AgentRequestBuffer.Status.PENDING) continue;
                     handle(e);
                 }
@@ -52,19 +57,22 @@ public final class ClaudeBridgeWorker implements Runnable {
         AgentRequestBuffer.Entry current = buf.findById(e.id());
         if (current == null || current.status() != AgentRequestBuffer.Status.PENDING) return;
 
-        AgentRequestBuffer.Entry working = buf.updateStatus(e.id(), AgentRequestBuffer.Status.WORKING, "Claude is thinking...");
+        AgentRequestBuffer.Entry working = buf.updateStatus(e.id(), AgentRequestBuffer.Status.WORKING,
+                AgentLang.tr("agentlinkagent.bridge.working"));
         if (working == null) return;
-        buf.markAgentSeen("claude working");
+        buf.markAgentSeen("i18n:agentlinkagent.activity.claude_working");
         AgentRequestBuffer.sendStatusToPlayer(mcServer, working);
 
-        String prompt = "[Player " + e.playerName() + " (OP)]: " + e.message();
-        ClaudeProcessRunner.Result r = ClaudeProcessRunner.run(cfg, prompt);
+        boolean admin = cfg.isAdmin(e.playerUuid());
+        String roleTag = admin ? "(admin)" : "(op)";
+        String prompt = "[Player " + e.playerName() + " " + roleTag + "]: " + e.message();
+        ClaudeProcessRunner.Result r = ClaudeProcessRunner.run(cfg, e.playerUuid(), prompt, mcpConfigPath);
 
         AgentRequestBuffer.Entry done = r.success()
                 ? buf.reply(e.id(), r.stdout(), true)
-                : buf.reply(e.id(), "[error] " + r.errorMessage(), true);
+                : buf.reply(e.id(), AgentLang.tr("agentlinkagent.bridge.error_prefix", r.errorMessage()), true);
         if (done == null) return;
-        buf.markAgentSeen(r.success() ? "claude replied" : "claude failed");
+        buf.markAgentSeen(r.success() ? "i18n:agentlinkagent.activity.claude_replied" : "i18n:agentlinkagent.activity.claude_failed");
         AgentRequestBuffer.sendReplyToPlayer(mcServer, done);
         if (!r.success()) {
             sendCopyableError(e, r);
@@ -80,18 +88,18 @@ public final class ClaudeBridgeWorker implements Runnable {
         ServerPlayer player = mcServer.getPlayerList().getPlayer(e.playerUuid());
         if (player == null) return;
         String details = errorDetails(e, r);
-        Component msg = Component.literal("[Agent] Click to copy error details")
+        Component msg = Component.literal(AgentLang.tr(player, "agentlinkagent.bridge.copy_error_details"))
                 .withStyle(style -> style
                         .withColor(ChatFormatting.YELLOW)
                         .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, details))
                         .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
-                                Component.literal("Copy error details for sending to an agent"))));
+                                Component.literal(AgentLang.tr(player, "agentlinkagent.bridge.copy_error_hover")))));
         player.sendSystemMessage(msg);
     }
 
     private static String errorDetails(AgentRequestBuffer.Entry e, ClaudeProcessRunner.Result r) {
         StringBuilder sb = new StringBuilder();
-        sb.append("mc-agent-link-agent Claude bridge error\n");
+        sb.append(AgentLang.tr("agentlinkagent.bridge.error_report_title")).append('\n');
         sb.append("request_id=").append(e.id()).append('\n');
         sb.append("player=").append(e.playerName()).append('\n');
         sb.append("session_id=").append(r.sessionId() == null ? "" : r.sessionId()).append('\n');

@@ -8,9 +8,14 @@ import net.minecraftforge.event.server.ServerStoppingEvent;
 import net.minecraftforge.common.MinecraftForge;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
+import net.minecraftforge.fml.loading.FMLPaths;
 import org.slf4j.Logger;
 import world.agentlink.addon.agent.claude.ClaudeBridgeWorker;
 import world.agentlink.addon.agent.claude.ExecutableLocator;
+import world.agentlink.addon.agent.claude.McpConfigWriter;
+import world.agentlink.api.AgentLinkApi;
+
+import java.nio.file.Path;
 
 @Mod(AgentLinkAgentAddon.MOD_ID)
 public final class AgentLinkAgentAddon {
@@ -45,7 +50,7 @@ public final class AgentLinkAgentAddon {
 
     synchronized ReloadResult reloadClaudeConfig() {
         if (server == null) {
-            return new ReloadResult(false, "server_not_started", "");
+            return new ReloadResult(false, "server_not_started");
         }
         stopClaudeWorker();
         AgentAddonConfig.load();
@@ -55,18 +60,50 @@ public final class AgentLinkAgentAddon {
     private synchronized ReloadResult applyClaudeConfig(AgentAddonConfig.Claude cfg) {
         if (!cfg.enable()) {
             LOG.info("agent-link-agent: claude bridge disabled (set [claude].enable=true to enable)");
-            return new ReloadResult(true, "disabled", cfg.sessionId());
+            return new ReloadResult(true, "disabled");
         }
         if (cfg.claudeExecutable().isBlank() && ExecutableLocator.findClaude() == null) {
             LOG.warn("agent-link-agent: claude bridge enabled but Claude executable was not found; worker will not start");
-            return new ReloadResult(false, "not_found", cfg.sessionId());
+            return new ReloadResult(false, "not_found");
         }
-        claudeWorker = new ClaudeBridgeWorker(server, cfg);
+
+        String resolvedToken = resolveMcpToken(cfg);
+        AgentAddonConfig.setResolvedMcpToken(resolvedToken);
+        AgentAddonConfig.Claude effective = AgentAddonConfig.get().claude();
+
+        Path mcpConfigPath = null;
+        if (resolvedToken.isBlank()) {
+            LOG.warn("agent-link-agent: no MCP token available (set claude.mcp_token, or ensure base mod's agent-link.toml has a token); MCP tools will not be reachable from Claude");
+        } else {
+            mcpConfigPath = McpConfigWriter.write(FMLPaths.CONFIGDIR.get(), effective);
+            if (mcpConfigPath == null) {
+                LOG.warn("agent-link-agent: failed to write MCP config file; MCP tools will not be reachable from Claude");
+            } else {
+                LOG.info("agent-link-agent: wrote MCP config to {}", mcpConfigPath);
+            }
+        }
+
+        claudeWorker = new ClaudeBridgeWorker(server, effective, mcpConfigPath);
         claudeThread = new Thread(claudeWorker, "AgentLink-Claude-Worker");
         claudeThread.setDaemon(true);
         claudeThread.start();
-        LOG.info("agent-link-agent: claude bridge started, session={}", cfg.sessionId());
-        return new ReloadResult(true, "started", cfg.sessionId());
+        LOG.info("agent-link-agent: claude bridge started, sessions cached={}, admins={}, mcp={}",
+                effective.sessions().size(), AgentLinkApi.adminUuids().size(),
+                mcpConfigPath == null ? "off" : "on");
+        return new ReloadResult(true, "started");
+    }
+
+    private static String resolveMcpToken(AgentAddonConfig.Claude cfg) {
+        if (cfg.mcpToken() != null && !cfg.mcpToken().isBlank()) return cfg.mcpToken();
+        try {
+            AgentLinkApi.ConfigView view = AgentLinkApi.config();
+            if (view != null && view.mcpToken() != null && !view.mcpToken().isBlank()) {
+                return view.mcpToken();
+            }
+        } catch (Throwable ex) {
+            LOG.debug("agent-link-agent: cannot read base mod token: {}", ex.getMessage());
+        }
+        return "";
     }
 
     private synchronized void stopClaudeWorker() {
@@ -83,6 +120,6 @@ public final class AgentLinkAgentAddon {
         claudeThread = null;
     }
 
-    record ReloadResult(boolean ok, String status, String sessionId) {}
+    record ReloadResult(boolean ok, String status) {}
 
 }
