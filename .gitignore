@@ -8,3 +8,6 @@ out/
 
 # 本地测试手册，不入库 (发版前给测试 AI 跑用)
 TESTBOOK-*.md
+
+# Session handover — local-only working notes for the next Claude Code session.
+HANDOVER.md
