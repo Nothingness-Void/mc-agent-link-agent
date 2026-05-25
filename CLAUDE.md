@@ -28,7 +28,7 @@ poll_interval_ms = 1500
 
 - `enable = true`: starts the background Claude bridge worker.
 - `claude_executable = ""`: search `PATH` for `claude.cmd`, `claude.exe`, `claude.bat`, then `claude`.
-- `session_id = ""`: safe to leave blank before first server start; the mod generates a UUID and writes it back.
+- `session_id = ""`: recommended. The first successful Claude call creates a real session and writes its `session_id` back.
 - `timeout_seconds = 120`: max time for one Claude request.
 - `working_directory = ""`: use the Minecraft server root as Claude Code cwd. Set an absolute path if the user wants Claude to resume a specific project context.
 - `poll_interval_ms = 1500`: queue polling interval.
@@ -74,7 +74,7 @@ Put both jars in `<server>/mods/`:
 
 ```text
 agent-link-forge-1.20.1-0.1.6-alpha.jar
-agent-link-agent-forge-1.20.1-0.2.1-alpha.jar
+agent-link-agent-forge-1.20.1-0.2.2-alpha.jar
 ```
 
 ## Smoke test

@@ -5,7 +5,6 @@ import net.minecraftforge.fml.loading.FMLPaths;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.UUID;
 
 public final class AgentAddonConfig {
 
@@ -44,16 +43,12 @@ public final class AgentAddonConfig {
             String workingDirectory = getString(cfg, "claude.working_directory", "");
             int pollIntervalMs = Math.max(100, getInt(cfg, "claude.poll_interval_ms", 1500));
 
-            if (sessionId.isBlank()) {
-                sessionId = UUID.randomUUID().toString();
-            }
-
             cfg.set("claude.enable", enable);
             cfg.setComment("claude.enable", " 是否启用 Claude 自动桥接。默认关: 行为同 0.1.x, 请求堆队列等外部 agent。");
             cfg.set("claude.claude_executable", claudeExecutable);
             cfg.setComment("claude.claude_executable", " claude.cmd / claude.exe / claude.bat 的绝对路径。留空则在 PATH 里查找。");
             cfg.set("claude.session_id", sessionId);
-            cfg.setComment("claude.session_id", " 共享会话 ID。所有 OP 共享同一个 Claude 对话历史(协作场景)。留空则首次启动时自动生成 UUID 并写回此文件。");
+            cfg.setComment("claude.session_id", " 共享 Claude 会话 ID。建议留空: 首次成功调用 Claude 后会写回真实 session_id。不要手动填写随机 UUID。");
             cfg.set("claude.timeout_seconds", timeoutSeconds);
             cfg.setComment("claude.timeout_seconds", " 单次调用超时(秒)。Claude 历史长时冷启可能 5~10s, 留宽松。");
             cfg.set("claude.working_directory", workingDirectory);
@@ -66,6 +61,23 @@ public final class AgentAddonConfig {
             if (fresh) {
                 AgentLinkAgentAddon.LOG.info("agent-link-agent wrote default config to {}", path);
             }
+        }
+    }
+
+    public static synchronized void updateClaudeSessionId(String sessionId) {
+        String nextSessionId = sessionId == null ? "" : sessionId;
+        Path path = FMLPaths.CONFIGDIR.get().resolve(FILE_NAME);
+        try (CommentedFileConfig cfg = CommentedFileConfig.builder(path)
+                .preserveInsertionOrder()
+                .build()) {
+            cfg.load();
+            cfg.set("claude.session_id", nextSessionId);
+            cfg.save();
+        }
+        if (CURRENT != null && CURRENT.claude() != null) {
+            Claude old = CURRENT.claude();
+            CURRENT = new Snapshot(new Claude(old.enable(), old.claudeExecutable(), nextSessionId,
+                    old.timeoutSeconds(), old.workingDirectory(), old.pollIntervalMs()));
         }
     }
 

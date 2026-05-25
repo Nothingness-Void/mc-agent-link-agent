@@ -1,6 +1,11 @@
 package world.agentlink.addon.agent.claude;
 
 import net.minecraft.server.MinecraftServer;
+import net.minecraft.ChatFormatting;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.HoverEvent;
+import net.minecraft.server.level.ServerPlayer;
 import world.agentlink.addon.agent.AgentAddonConfig;
 import world.agentlink.addon.agent.AgentLinkAgentAddon;
 import world.agentlink.agent.AgentRequestBuffer;
@@ -61,9 +66,44 @@ public final class ClaudeBridgeWorker implements Runnable {
         if (done == null) return;
         buf.markAgentSeen(r.success() ? "claude replied" : "claude failed");
         AgentRequestBuffer.sendReplyToPlayer(mcServer, done);
+        if (!r.success()) {
+            sendCopyableError(e, r);
+        }
     }
 
     public void stop() {
         running = false;
+    }
+
+    private void sendCopyableError(AgentRequestBuffer.Entry e, ClaudeProcessRunner.Result r) {
+        if (e.playerUuid() == null) return;
+        ServerPlayer player = mcServer.getPlayerList().getPlayer(e.playerUuid());
+        if (player == null) return;
+        String details = errorDetails(e, r);
+        Component msg = Component.literal("[Agent] Click to copy error details")
+                .withStyle(style -> style
+                        .withColor(ChatFormatting.YELLOW)
+                        .withClickEvent(new ClickEvent(ClickEvent.Action.COPY_TO_CLIPBOARD, details))
+                        .withHoverEvent(new HoverEvent(HoverEvent.Action.SHOW_TEXT,
+                                Component.literal("Copy error details for sending to an agent"))));
+        player.sendSystemMessage(msg);
+    }
+
+    private static String errorDetails(AgentRequestBuffer.Entry e, ClaudeProcessRunner.Result r) {
+        StringBuilder sb = new StringBuilder();
+        sb.append("mc-agent-link-agent Claude bridge error\n");
+        sb.append("request_id=").append(e.id()).append('\n');
+        sb.append("player=").append(e.playerName()).append('\n');
+        sb.append("session_id=").append(r.sessionId() == null ? "" : r.sessionId()).append('\n');
+        sb.append("error=").append(r.errorMessage() == null ? "" : r.errorMessage()).append('\n');
+        String stderr = r.stderr() == null ? "" : r.stderr().trim();
+        if (!stderr.isEmpty()) {
+            sb.append("stderr=\n").append(stderr).append('\n');
+        }
+        String stdout = r.stdout() == null ? "" : r.stdout().trim();
+        if (!stdout.isEmpty()) {
+            sb.append("stdout=\n").append(stdout).append('\n');
+        }
+        return sb.toString();
     }
 }
