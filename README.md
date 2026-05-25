@@ -8,6 +8,7 @@ This addon owns the in-game `/agent` command. The base mod remains a base/lib mo
 
 - `/agent <request>` queues an OP request for connected MCP agents or companion addons.
 - `/agent status` shows recent requests and agent activity.
+- `/agent reload` reloads `config/agent-link-agent.toml` and restarts/stops the Claude bridge without restarting the server.
 - `/agent cancel <id>` cancels a pending request.
 - Optional Claude bridge can process queued requests automatically when enabled.
 - Server-side bilingual messages:
@@ -37,6 +38,8 @@ poll_interval_ms = 1500
 ```
 
 When `claude_executable` is empty, the addon searches `PATH` for `claude.cmd`, `claude.exe`, `claude.bat`, then `claude`. All OPs share the same Claude `session_id`.
+
+After editing the config while the server is running, run `/agent reload` as an OP to apply it.
 
 For Claude Code itself, see `CLAUDE.md` for the shortest copy-paste setup guide.
 

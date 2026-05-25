@@ -15,7 +15,7 @@ final class AgentCommand {
 
     private AgentCommand() {}
 
-    static void register(RegisterCommandsEvent event) {
+    static void register(RegisterCommandsEvent event, AgentLinkAgentAddon addon) {
         event.getDispatcher().register(Commands.literal("agent")
                 .requires(source -> source.hasPermission(2))
                 .executes(ctx -> help(ctx.getSource().getPlayerOrException()))
@@ -23,6 +23,8 @@ final class AgentCommand {
                         .executes(ctx -> help(ctx.getSource().getPlayerOrException())))
                 .then(Commands.literal("status")
                         .executes(ctx -> status(ctx.getSource().getPlayerOrException())))
+                .then(Commands.literal("reload")
+                        .executes(ctx -> reload(ctx.getSource().getPlayerOrException(), addon)))
                 .then(Commands.literal("cancel")
                         .then(Commands.argument("id", StringArgumentType.word())
                                 .executes(ctx -> cancel(ctx.getSource().getPlayerOrException(),
@@ -35,6 +37,7 @@ final class AgentCommand {
     private static int help(ServerPlayer player) {
         send(player, AgentMessages.Key.HELP_ASK, ChatFormatting.AQUA);
         send(player, AgentMessages.Key.HELP_STATUS, ChatFormatting.GRAY);
+        send(player, AgentMessages.Key.HELP_RELOAD, ChatFormatting.GRAY);
         send(player, AgentMessages.Key.HELP_CANCEL, ChatFormatting.GRAY);
         return 1;
     }
@@ -65,6 +68,18 @@ final class AgentCommand {
             send(player, AgentMessages.Key.RECENT_ITEM, ChatFormatting.GRAY, e.id(), status, statusMessage, summary);
         }
         return 1;
+    }
+
+    private static int reload(ServerPlayer player, AgentLinkAgentAddon addon) {
+        AgentLinkAgentAddon.ReloadResult result = addon.reloadClaudeConfig();
+        switch (result.status()) {
+            case "started" -> send(player, AgentMessages.Key.RELOAD_STARTED, ChatFormatting.AQUA, result.sessionId());
+            case "disabled" -> send(player, AgentMessages.Key.RELOAD_DISABLED, ChatFormatting.YELLOW);
+            case "not_found" -> send(player, AgentMessages.Key.RELOAD_NOT_FOUND, ChatFormatting.RED);
+            case "server_not_started" -> send(player, AgentMessages.Key.RELOAD_SERVER_NOT_STARTED, ChatFormatting.RED);
+            default -> send(player, AgentMessages.Key.RELOAD_FAILED, ChatFormatting.RED, result.status());
+        }
+        return result.ok() ? 1 : 0;
     }
 
     private static int cancel(ServerPlayer player, String id) {

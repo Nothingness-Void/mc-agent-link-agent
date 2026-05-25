@@ -74,16 +74,20 @@ Put both jars in `<server>/mods/`:
 
 ```text
 agent-link-forge-1.20.1-0.1.6-alpha.jar
-agent-link-agent-forge-1.20.1-0.2.0-alpha.jar
+agent-link-agent-forge-1.20.1-0.2.1-alpha.jar
 ```
 
 ## Smoke test
 
 1. Start the server once so `config/agent-link-agent.toml` is generated.
-2. Stop the server.
-3. Edit `[claude].enable = true`.
-4. Start the server.
-5. As an OP player, run:
+2. Edit `[claude].enable = true`.
+3. As an OP player, run:
+
+```text
+/agent reload
+```
+
+4. Then run:
 
 ```text
 /agent 你好，简单介绍一下你是谁
