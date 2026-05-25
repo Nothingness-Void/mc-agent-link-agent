@@ -1,0 +1,94 @@
+plugins {
+    id 'eclipse'
+    id 'idea'
+    id 'maven-publish'
+    id 'net.minecraftforge.gradle' version '[6.0.16,6.2)'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = "agent-link-agent-forge-${minecraft_version}"
+}
+
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(17)
+}
+
+minecraft {
+    mappings channel: mapping_channel, version: mapping_version
+
+    copyIdeResources = true
+
+    runs {
+        configureEach {
+            workingDirectory project.file('run')
+            property 'forge.logging.markers', 'REGISTRIES'
+            property 'forge.logging.console.level', 'debug'
+            mods {
+                "${mod_id}" {
+                    source sourceSets.main
+                }
+            }
+        }
+
+        server {
+            args '--nogui'
+        }
+    }
+}
+
+sourceSets.main.resources { srcDir 'src/generated/resources' }
+
+repositories {
+    mavenCentral()
+}
+
+def baseClasses = file('../mc-agent-link/minecraft/forge-mod/build/classes/java/main')
+def baseResources = file('../mc-agent-link/minecraft/forge-mod/build/resources/main')
+
+dependencies {
+    minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    compileOnly files(baseClasses)
+    compileOnly files(baseResources)
+}
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+    options.release = 17
+}
+
+tasks.named('compileJava') {
+    doFirst {
+        if (!baseClasses.exists()) {
+            throw new GradleException("Base mc-agent-link classes not found at ${baseClasses}. Build ../mc-agent-link/minecraft/forge-mod first.")
+        }
+    }
+}
+
+tasks.named('jar') {
+    finalizedBy 'reobfJar'
+}
+
+tasks.named('assemble') {
+    dependsOn 'jar'
+}
+
+processResources {
+    inputs.property "version", project.version
+
+    filesMatching(['META-INF/mods.toml', 'pack.mcmeta']) {
+        expand version: project.version,
+               minecraft_version: minecraft_version,
+               minecraft_version_range: minecraft_version_range,
+               forge_version_range: forge_version_range,
+               loader_version_range: loader_version_range,
+               mod_id: mod_id,
+               mod_name: mod_name,
+               mod_license: mod_license,
+               mod_authors: mod_authors,
+               mod_description: mod_description,
+               base_agentlink_version_range: base_agentlink_version_range
+    }
+}
