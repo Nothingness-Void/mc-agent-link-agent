@@ -42,6 +42,18 @@ public final class ClaudeProcessRunner {
 
         boolean admin = cfg.isAdmin(playerUuid);
 
+        // Pre-allocate a session id so the conversation is recoverable even if the child process
+        // is killed mid-flight (timeout, server stop). The CLI accepts --session-id <uuid> for new
+        // conversations and ALSO emits the same id back in the JSON `session_id` field, so resume
+        // semantics work exactly the same as before. We persist this id eagerly — if the next
+        // /agent invocation comes in before the current one completes, --resume will pick up the
+        // partial conversation rather than starting over.
+        boolean isNewConversation = sessionId.isBlank();
+        String preallocatedSessionId = isNewConversation ? UUID.randomUUID().toString() : sessionId;
+        if (isNewConversation) {
+            AgentAddonConfig.updateClaudeSessionId(playerUuid, preallocatedSessionId);
+        }
+
         List<String> cmd = new ArrayList<>();
         cmd.add(exe);
         cmd.add("-p");
@@ -51,7 +63,10 @@ public final class ClaudeProcessRunner {
             cmd.add("--permission-mode");
             cmd.add(cfg.permissionMode());
         }
-        if (!sessionId.isBlank()) {
+        if (isNewConversation) {
+            cmd.add("--session-id");
+            cmd.add(preallocatedSessionId);
+        } else {
             cmd.add("--resume");
             cmd.add(sessionId);
         }
@@ -90,7 +105,7 @@ public final class ClaudeProcessRunner {
         try {
             p = pb.start();
         } catch (IOException ex) {
-            return new Result(false, "", "", AgentLang.tr("agentlinkagent.claude.start_failed", ex.getMessage()), sessionId);
+            return new Result(false, "", "", AgentLang.tr("agentlinkagent.claude.start_failed", ex.getMessage()), preallocatedSessionId);
         }
 
         StringBuilder out = new StringBuilder();
@@ -108,11 +123,25 @@ public final class ClaudeProcessRunner {
         } catch (InterruptedException ie) {
             p.destroyForcibly();
             Thread.currentThread().interrupt();
-            return new Result(false, "", "", AgentLang.tr("agentlinkagent.claude.interrupted"), sessionId);
+            return new Result(false, out.toString(), err.toString(),
+                    AgentLang.tr("agentlinkagent.claude.interrupted"), preallocatedSessionId);
         }
         if (!finished) {
+            // Hard kill, but FIRST flush whatever the streams already produced so the operator gets
+            // some context. The drain threads are still draining; give them a brief window to catch
+            // up before we report.
             p.destroyForcibly();
-            return new Result(false, "", "", AgentLang.tr("agentlinkagent.claude.timed_out", cfg.timeoutSeconds()), sessionId);
+            try {
+                to.join(500);
+                te.join(500);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+            }
+            String stdoutTail = tailSnippet(out.toString(), 600);
+            String stderrTail = tailSnippet(err.toString(), 600);
+            String detail = buildTimeoutDetail(cfg.timeoutSeconds(), preallocatedSessionId, isNewConversation,
+                    stdoutTail, stderrTail);
+            return new Result(false, out.toString(), err.toString(), detail, preallocatedSessionId);
         }
         try {
             to.join(2000);
@@ -131,11 +160,47 @@ public final class ClaudeProcessRunner {
                 snippet = tail;
             }
             String suffix = snippet.isEmpty() ? "" : ": " + snippet;
-            return new Result(false, out.toString(), err.toString(), AgentLang.tr("agentlinkagent.claude.exit_code", code, suffix), sessionId);
+            return new Result(false, out.toString(), err.toString(),
+                    AgentLang.tr("agentlinkagent.claude.exit_code", code, suffix), preallocatedSessionId);
         }
         String stdout = out.toString().trim();
-        if (stdout.isEmpty()) return new Result(false, "", err.toString(), AgentLang.tr("agentlinkagent.claude.no_output"), sessionId);
-        return parseJsonResult(stdout, err.toString(), playerUuid, sessionId);
+        if (stdout.isEmpty()) return new Result(false, "", err.toString(),
+                AgentLang.tr("agentlinkagent.claude.no_output"), preallocatedSessionId);
+        return parseJsonResult(stdout, err.toString(), playerUuid, preallocatedSessionId);
+    }
+
+    private static String tailSnippet(String s, int max) {
+        if (s == null) return "";
+        String trimmed = s.trim();
+        if (trimmed.isEmpty()) return "";
+        if (trimmed.length() <= max) return trimmed;
+        return "[…] " + trimmed.substring(trimmed.length() - max);
+    }
+
+    /**
+     * Build a multi-line, operator-readable timeout message. Lines:
+     *   1. "timed out after N seconds. Session id pre-allocated; next /agent will --resume."
+     *   2. "session_id=<uuid>" (so the operator can find the conversation file directly)
+     *   3. stdout tail (often a partial JSON or last MCP tool call)
+     *   4. stderr tail (often the actual blocker — approval pending, network error, etc.)
+     */
+    private static String buildTimeoutDetail(int timeoutSeconds, String sessionId, boolean wasNew,
+                                             String stdoutTail, String stderrTail) {
+        StringBuilder sb = new StringBuilder();
+        sb.append(AgentLang.tr("agentlinkagent.claude.timed_out", timeoutSeconds));
+        sb.append('\n');
+        sb.append(AgentLang.tr("agentlinkagent.claude.timed_out.session_hint", sessionId,
+                wasNew ? AgentLang.tr("agentlinkagent.claude.timed_out.new")
+                        : AgentLang.tr("agentlinkagent.claude.timed_out.resumed")));
+        if (!stdoutTail.isEmpty()) {
+            sb.append('\n');
+            sb.append(AgentLang.tr("agentlinkagent.claude.timed_out.stdout_tail", stdoutTail));
+        }
+        if (!stderrTail.isEmpty()) {
+            sb.append('\n');
+            sb.append(AgentLang.tr("agentlinkagent.claude.timed_out.stderr_tail", stderrTail));
+        }
+        return sb.toString();
     }
 
     private static Result parseJsonResult(String stdout, String stderr, UUID playerUuid, String fallbackSessionId) {

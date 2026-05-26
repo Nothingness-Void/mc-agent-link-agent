@@ -137,7 +137,7 @@ public final class AgentAddonConfig {
 
             boolean enable = getBoolean(cfg, "claude.enable", false);
             String claudeExecutable = getString(cfg, "claude.claude_executable", "");
-            int timeoutSeconds = Math.max(1, getInt(cfg, "claude.timeout_seconds", 120));
+            int timeoutSeconds = Math.max(1, getInt(cfg, "claude.timeout_seconds", 600));
             String workingDirectory = getString(cfg, "claude.working_directory", "");
             int pollIntervalMs = Math.max(100, getInt(cfg, "claude.poll_interval_ms", 1500));
             String permissionMode = getString(cfg, "claude.permission_mode", DEFAULT_PERMISSION_MODE);
@@ -180,7 +180,7 @@ public final class AgentAddonConfig {
             cfg.set("claude.claude_executable", claudeExecutable);
             cfg.setComment("claude.claude_executable", " claude.cmd / claude.exe / claude.bat 的绝对路径。留空则在 PATH 里查找。");
             cfg.set("claude.timeout_seconds", timeoutSeconds);
-            cfg.setComment("claude.timeout_seconds", " 单次调用超时(秒)。Claude 历史长时冷启可能 5~10s, 留宽松。");
+            cfg.setComment("claude.timeout_seconds", " 单次调用超时(秒)。包含 Claude 启动 + 模型推理 + 所有 MCP 工具调用 + 游戏内审批等待。\n 默认 600 = 10 分钟，应付一次涉及多次审批 / 多次 MCP 工具调用的复杂请求。\n 0.4.1 起，超时不会丢 session id —— 下次 /agent 会 --resume 同一会话。\n 仍需注意：超时会强杀 Claude 子进程，未完成的工具调用不会撤销。");
             cfg.set("claude.working_directory", workingDirectory);
             cfg.setComment("claude.working_directory", " Claude Code 启动 cwd, 留空则用服务器根目录。影响 --resume 从哪个 project 目录读 JSONL。");
             cfg.set("claude.poll_interval_ms", pollIntervalMs);
